@@ -15,8 +15,13 @@ const imageUrl = pulumi.interpolate`${repositoryUrl}/fastify-hello-world:${image
 
 // Container-Optimized OS runs this once at boot; production deploys force a
 // reboot (see cd.yml) so an updated imageTag actually takes effect.
+// COS's root filesystem is read-only, so docker-credential-gcr can't write
+// to the default $HOME (/root/.docker) - point it at the writable stateful
+// partition instead.
 const startupScript = pulumi.interpolate`#!/bin/bash
 set -e
+export HOME=/var/lib/google-startup-home
+mkdir -p "$HOME"
 docker-credential-gcr configure-docker --registries=${region}-docker.pkg.dev
 docker rm -f fastify-app || true
 docker run -d --restart=always --name fastify-app -p 3000:3000 ${imageUrl}

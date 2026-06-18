@@ -74,6 +74,7 @@ jobs:
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - uses: pulumi/setup-pulumi@v2
+      - uses: google-github-actions/setup-gcloud@v3
 
       - uses: actions/setup-node@v6
         with:
@@ -91,6 +92,12 @@ jobs:
           pulumi config set fastify-compute:imageTag "${{ needs.build-and-push.outputs.sha }}"
           pulumi up --yes
           echo "ip=$(pulumi stack output publicIp)" >> "$GITHUB_OUTPUT"
+
+      # A metadata-only update doesn't re-run the COS startup script on a
+      # live instance (e.g. when re-running after a prior failed attempt),
+      # so force a reboot to guarantee the current image is running.
+      - name: Restart instance to pull current image
+        run: gcloud compute instances reset fastify-staging --zone=us-central1-a
 
       - name: Smoke test staging
         run: |
