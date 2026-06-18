@@ -1,38 +1,45 @@
 name: CD
 
-# Runs after CI has validated main. Builds one image, deploys it to staging,
-# then pauses on the production job until a required reviewer approves the
-# "production" GitHub Environment (configured in repo Settings, see README).
+# Runs after CI has validated main. Builds one image, provisions a fresh
+# staging VM with Pulumi, then pauses on the production job until a required
+# reviewer approves the "production" GitHub Environment (configured in repo
+# Settings, see README). Staging is torn down once production succeeds.
 on:
   push:
     branches: [main]
 
 permissions:
   contents: read
-  packages: write
+  id-token: write
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  GCP_REGION: us-central1
+  ARTIFACT_REPO: fastify-repo
+  IMAGE_NAME: fastify-hello-world
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.image.outputs.tag }}
+      sha: ${{ steps.image.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - id: image
-        run: echo "tag=${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+        run: |
+          SHA="${GITHUB_SHA::12}"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "tag=${GCP_REGION}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${ARTIFACT_REPO}/${IMAGE_NAME}:${SHA}" >> "$GITHUB_OUTPUT"
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - run: gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
+
+      - uses: docker/setup-buildx-action@v3
 
       - uses: docker/build-push-action@v5
         with:
@@ -45,17 +52,87 @@ jobs:
     needs: build-and-push
     environment:
       name: staging
-      url: https://staging.example.com
+    outputs:
+      ip: ${{ steps.up.outputs.ip }}
     steps:
-      - run: echo "Deploying ${{ needs.build-and-push.outputs.image }} to STAGING"
-      # Replace with real deploy commands (kubectl, ssh, terraform, etc.)
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: pulumi/setup-pulumi@v2
+
+      - working-directory: infra/compute
+        run: npm ci
+
+      - id: up
+        working-directory: infra/compute
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          pulumi stack select staging --create
+          pulumi config set fastify-compute:imageTag "${{ needs.build-and-push.outputs.sha }}"
+          pulumi up --yes
+          echo "ip=$(pulumi stack output publicIp)" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test staging
+        run: |
+          sleep 30
+          curl -sf "http://${{ steps.up.outputs.ip }}:3000/health"
 
   deploy-production:
     runs-on: ubuntu-latest
-    needs: deploy-staging
+    needs: [build-and-push, deploy-staging]
     environment:
       name: production
-      url: https://example.com
     steps:
-      - run: echo "Deploying ${{ needs.build-and-push.outputs.image }} to PRODUCTION"
-      # Replace with real deploy commands (kubectl, ssh, terraform, etc.)
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: pulumi/setup-pulumi@v2
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - working-directory: infra/compute
+        run: npm ci
+
+      - working-directory: infra/compute
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          pulumi stack select production --create
+          pulumi config set fastify-compute:imageTag "${{ needs.build-and-push.outputs.sha }}"
+          pulumi up --yes
+
+      # A metadata-only update doesn't re-run the COS startup script on a
+      # live instance, so force a reboot to pick up the new image.
+      - name: Restart instance to pull new image
+        run: gcloud compute instances reset fastify-production --zone=us-central1-a
+
+  destroy-staging:
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: pulumi/setup-pulumi@v2
+
+      - working-directory: infra/compute
+        run: npm ci
+
+      - working-directory: infra/compute
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          pulumi stack select staging
+          pulumi destroy --yes

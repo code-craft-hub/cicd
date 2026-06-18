@@ -1,0 +1,35 @@
+name: Infra (shared)
+
+# Shared infra (Artifact Registry, firewall rules, VM service account) is
+# persistent and rarely changes, so it's applied manually rather than on
+# every push - run this once after the GCP bootstrap script, and again only
+# when infra/shared changes.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  apply-shared-infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: pulumi/setup-pulumi@v2
+
+      - working-directory: infra/shared
+        run: npm ci
+
+      - working-directory: infra/shared
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          pulumi stack select shared --create
+          pulumi up --yes

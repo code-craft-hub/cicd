@@ -1,0 +1,12 @@
+{
+  "name": "fastify-shared",
+  "main": "index.ts",
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "typescript": "^5.5.3"
+  },
+  "dependencies": {
+    "@pulumi/pulumi": "^3.247.0",
+    "@pulumi/gcp": "^9.27.0"
+  }
+}

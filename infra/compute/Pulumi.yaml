@@ -1,0 +1,3 @@
+name: fastify-compute
+runtime: nodejs
+description: Per-environment Compute Engine VM running the Fastify container image. The staging stack is created and destroyed on every CD run; production persists.
