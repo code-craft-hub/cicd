@@ -15,14 +15,18 @@ jobs:
   apply-shared-infra:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - uses: pulumi/setup-pulumi@v2
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
 
       - working-directory: infra/shared
         run: npm ci
