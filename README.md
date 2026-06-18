@@ -59,19 +59,21 @@ two values needed below.
 
 ### 2. GitHub repo configuration
 
-**Variables** (Settings → Secrets and variables → Actions → Variables):
+**Secrets** (Settings → Secrets and variables → Actions → Secrets):
 
 | Name | Value |
 |---|---|
-| `GCP_PROJECT_ID` | `cverai` |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | printed by the bootstrap script |
 | `GCP_SERVICE_ACCOUNT` | printed by the bootstrap script (`github-deployer@cverai.iam.gserviceaccount.com`) |
-
-**Secrets**:
-
-| Name | Value |
-|---|---|
 | `PULUMI_ACCESS_TOKEN` | a token from [app.pulumi.com/account/tokens](https://app.pulumi.com/account/tokens) |
+
+The GCP project ID (`cverai`) is hardcoded in [cd.yml](.github/workflows/cd.yml)
+and the `Pulumi.*.yaml` config files, so it doesn't need a repo setting.
+
+Neither the provider path nor the service account email is actually
+sensitive, but `google-github-actions/auth`'s inputs read most naturally as
+secrets here and GitHub secrets work fine for non-secret values too — just
+expect them masked as `***` in run logs.
 
 ### 3. Apply shared infra once
 

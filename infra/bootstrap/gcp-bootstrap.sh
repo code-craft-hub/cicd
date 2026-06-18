@@ -57,7 +57,7 @@ gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/attribute.repository/${REPO}"
 
 echo
-echo "Done. Add these as GitHub Actions repo VARIABLES (Settings > Secrets and variables > Actions > Variables):"
-echo "  GCP_PROJECT_ID                 = ${PROJECT_ID}"
+echo "Done. Add these as GitHub Actions repo SECRETS (Settings > Secrets and variables > Actions > Secrets):"
 echo "  GCP_WORKLOAD_IDENTITY_PROVIDER  = projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/providers/${PROVIDER_ID}"
 echo "  GCP_SERVICE_ACCOUNT             = ${SA_EMAIL}"
+echo "(GCP_PROJECT_ID is hardcoded in the workflows as '${PROJECT_ID}', no repo setting needed.)"
