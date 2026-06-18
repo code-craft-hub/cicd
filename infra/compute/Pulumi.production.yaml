@@ -1,6 +1,6 @@
 config:
   gcp:project: cverai
   gcp:region: us-central1
-  fastify-compute:sharedStack: fastify-shared/shared
+  fastify-compute:sharedStack: kachi/fastify-shared/shared
   fastify-compute:zone: us-central1-a
   fastify-compute:machineType: e2-micro
