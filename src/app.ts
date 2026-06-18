@@ -4,7 +4,7 @@ export function buildApp(): FastifyInstance {
   const app = Fastify({ logger: true });
 
   app.get('/', async () => {
-    return { message: 'Hello, world! dev' };
+    return { message: 'Hello, world!' };
   });
 
   app.get('/health', async () => {
