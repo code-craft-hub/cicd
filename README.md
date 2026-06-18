@@ -23,7 +23,7 @@ docker build -t fastify-hello-world .
 ## Pipeline
 
 - [.github/workflows/ci.yml](.github/workflows/ci.yml) — runs on every PR and push to `main`: typecheck, tests, build, Docker build.
-- [.github/workflows/cd.yml](.github/workflows/cd.yml) — runs on push to `main`: builds and pushes one image to Artifact Registry, provisions a fresh `staging` VM with Pulumi, then deploys to the persistent `production` VM, then tears `staging` back down.
+- [.github/workflows/cd.yml](.github/workflows/cd.yml) — triggered by `workflow_run` once CI *completes successfully* on `main` (not by `push` directly, so deploy can never race the test suite gating it). Builds and pushes one image to Artifact Registry, provisions a fresh `staging` VM with Pulumi, then deploys to the persistent `production` VM, then tears `staging` back down. Every job checks out `github.event.workflow_run.head_sha` explicitly, since `workflow_run` doesn't otherwise point `GITHUB_SHA` at the commit that triggered it.
 - [.github/workflows/infra-shared.yml](.github/workflows/infra-shared.yml) — manually triggered; applies the persistent shared infra (Artifact Registry repo, firewall rules, VM service account).
 
 The `deploy-production` job declares `environment: production`. If that
@@ -100,10 +100,18 @@ Settings → Branches → Add rule for `main`:
 Edit [.github/CODEOWNERS](.github/CODEOWNERS) to list real usernames/teams
 instead of the placeholder.
 
-Once all of the above is set, a merge to `main` will: run CI → build & push
-the image → stand up a fresh staging VM and smoke-test it → **stop and
-wait** for an approver to unblock `deploy-production` → deploy to the
-persistent production VM → tear the staging VM back down.
+Once all of the above is set, a merge to `main` will: run CI → (only if CI is
+green) build & push the image → stand up a fresh staging VM and smoke-test
+it → **stop and wait** for an approver to unblock `deploy-production` →
+deploy to the persistent production VM → tear the staging VM back down.
+
+CI and CD are deliberately two separate workflow files chained by
+`workflow_run` rather than one merged pipeline — this keeps the fast,
+always-on PR feedback loop (`ci.yml`) independent from the deploy pipeline
+(`cd.yml`), while still guaranteeing CD never runs against a commit CI
+hasn't passed. Note: `workflow_run` fires from the workflow file on the
+*default branch*, so changes to `cd.yml` itself only take effect after
+they've landed on `main`.
 
 ### SSH access (debugging)
 
